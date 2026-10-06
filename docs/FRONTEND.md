@@ -31,7 +31,9 @@ https://agecare-admin-pruebas.vercel.app/api/v1/admin
 {"email":"admin@wellq.co.uk","password":"Admin123!"}
 ```
 
-3. Copiar `access_token` y usar el botón **Authorize** de Swagger.
+3. Copiar el valor de `access_token` sin comillas. Pulsar **Authorize** arriba,
+   pegar solamente ese token en **Value** de `BearerAuth`, pulsar **Authorize**
+   y después **Close**. Swagger agrega automáticamente el prefijo `Bearer`.
 4. Probar `GET /auth/me`, `/support/summary` y `/ops/status`.
 
 Para métricas comerciales, enviar el período requerido, por ejemplo:

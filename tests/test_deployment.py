@@ -31,7 +31,13 @@ def test_vercel_entrypoint_and_cors_boundary():
         from sqlalchemy.orm import configure_mappers
 
         configure_mappers()
-        assert app.openapi()["paths"]
+        schema = app.openapi()
+        assert schema["paths"]
+        bearer = schema["components"]["securitySchemes"]["BearerAuth"]
+        assert bearer["type"] == "http" and bearer["scheme"] == "bearer"
+        assert schema["paths"]["/api/v1/admin/auth/me"]["get"]["security"] == [{"BearerAuth": []}]
+        assert schema["paths"]["/api/v1/admin/support/tickets"]["get"]["security"] == [{"BearerAuth": []}]
+        assert not schema["paths"]["/api/v1/admin/auth/login"]["post"].get("security")
 
         async def check():
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -51,6 +57,10 @@ def test_vercel_entrypoint_and_cors_boundary():
                 assert "access-control-allow-origin" not in denied.headers
                 unauthenticated = await client.get("/api/v1/admin/auth/me")
                 assert unauthenticated.status_code == 401
+                for auth in ("Basic invalid", "Bearer ", "Bearer invalid"):
+                    invalid = await client.get("/api/v1/admin/auth/me", headers={"Authorization": auth})
+                    assert invalid.status_code == 401
+                    assert invalid.json()["error"]["code"]
 
         asyncio.run(check())
     ''')
