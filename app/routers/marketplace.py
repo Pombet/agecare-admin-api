@@ -3,6 +3,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Query, Request
 from sqlalchemy import func, select
+from sqlalchemy.orm import selectinload
 
 from app import models
 from app.audit import audit
@@ -35,7 +36,7 @@ async def list_caregivers(db: Db,
                           q: str | None = Query(default=None, max_length=120),
                           page: int = Query(default=1, ge=1),
                           page_size: int = Query(default=25, ge=1, le=100)):
-    stmt = select(models.CaregiverProfile)
+    stmt = select(models.CaregiverProfile).options(selectinload(models.CaregiverProfile.admin_users))
     if status_f:
         stmt = stmt.where(models.CaregiverProfile.status == status_f)
     if zone:
@@ -70,6 +71,7 @@ async def patch_caregiver(caregiver_id: UUID, body: CaregiverPatchIn, request: R
         c.status_reason = body.reason
         c.reviewed_by = admin.id
         c.reviewed_by_name = admin.full_name
+        c.reviewed_at = now_utc()
         # Al suspender se notificaría a la cuidadora con el motivo.
     if body.internal_note is not None:
         c.internal_note = body.internal_note

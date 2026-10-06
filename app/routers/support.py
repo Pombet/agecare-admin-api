@@ -4,6 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Query, Request
 from sqlalchemy import func, select
+from sqlalchemy.orm import selectinload
 
 from app import models
 from app.audit import audit
@@ -68,10 +69,10 @@ async def support_summary(db: Db):
     fr_now = await avg_first_response(d30, now)
     fr_prev = await avg_first_response(d60, d30)
 
-    csat_q = (await db.execute(select(func.avg(models.Ticket.csat_score),
-                                      func.count(models.Ticket.csat_score))
-                               .where(models.Ticket.csat_score.isnot(None),
-                                      models.Ticket.resolved_at >= d30))).one()
+    csat_q = (await db.execute(select(func.avg(models.SupportCsatSurveys.score),
+                                      func.count(models.SupportCsatSurveys.score))
+                               .where(models.SupportCsatSurveys.responded_at >= d30,
+                                      models.SupportCsatSurveys.score.isnot(None)))).one()
     open_now = await count_status(TicketStatus.open)
     week_ago_open = open_now - 6  # aproximación demo: el histórico real saldría de support_metrics_daily
 
@@ -118,7 +119,7 @@ async def list_tickets(db: Db,
                        order: str = Query(default="-created_at"),
                        page: int = Query(default=1, ge=1),
                        page_size: int = Query(default=25, ge=1, le=100)):
-    stmt = select(models.Ticket)
+    stmt = select(models.Ticket).options(selectinload(models.Ticket.admin_users))
     if status_f:
         stmt = stmt.where(models.Ticket.status == status_f)
     if priority:
@@ -148,11 +149,12 @@ async def _get_ticket(db, ticket_id: str) -> models.Ticket:
     t = None
     raw = ticket_id.lstrip("#")
     if raw.isdigit():
-        t = (await db.execute(select(models.Ticket)
+        t = (await db.execute(select(models.Ticket).options(selectinload(models.Ticket.admin_users))
                               .where(models.Ticket.number == int(raw)))).scalar_one_or_none()
     else:
         try:
-            t = await db.get(models.Ticket, UUID(raw))
+            t = (await db.execute(select(models.Ticket).options(selectinload(models.Ticket.admin_users))
+                                  .where(models.Ticket.id == UUID(raw)))).scalar_one_or_none()
         except ValueError:
             t = None
     if t is None:
@@ -167,10 +169,12 @@ async def ticket_detail(ticket_id: str, db: Db):
     replies = (await db.execute(select(func.count()).select_from(models.TicketReply)
                                 .where(models.TicketReply.ticket_id == t.id))).scalar_one()
     base = _ticket_out(t).model_dump()
+    survey = (await db.execute(select(models.SupportCsatSurveys)
+                               .where(models.SupportCsatSurveys.ticket_id == t.id))).scalar_one_or_none()
     return TicketDetailOut(**base, description=t.description,
                            requester_context=t.requester_context, replies_count=replies,
-                           csat=Csat(score=t.csat_score, comment=t.csat_comment)
-                           if t.csat_score is not None else None)
+                           csat=Csat(score=survey.score, comment=survey.comment)
+                           if survey is not None and survey.score is not None else None)
 
 
 # ---------- 8.3 Crear ----------
@@ -194,7 +198,7 @@ async def create_ticket(body: TicketCreateIn, request: Request, db: Db,
                       requester_role=prev.requester_role if prev else None,
                       requester_plan=prev.requester_plan if prev else None,
                       category=body.category, priority=body.priority,
-                      status=TicketStatus.open, channel=body.channel)
+                      status=TicketStatus.open, channel=body.channel, created_by=admin.id)
     db.add(t)
     await db.flush()
     await db.refresh(t)
@@ -217,7 +221,20 @@ async def patch_ticket(ticket_id: str, body: TicketPatchIn, request: Request, db
         t.status = target
         if target == TicketStatus.resolved:
             t.resolved_at = now_utc()
+            t.closed_at = None
+            survey = (await db.execute(select(models.SupportCsatSurveys)
+                                       .where(models.SupportCsatSurveys.ticket_id == t.id)))\
+                .scalar_one_or_none()
+            if survey is None:
+                db.add(models.SupportCsatSurveys(ticket_id=t.id, sent_at=now_utc()))
+            elif survey.responded_at is None:
+                survey.sent_at = now_utc()
             # Aquí se enviaría la encuesta CSAT al usuario (push/correo).
+        elif target == TicketStatus.closed:
+            t.closed_at = now_utc()
+        else:
+            t.resolved_at = None
+            t.closed_at = None
     if body.priority is not None:
         t.priority = body.priority
     if body.category is not None:

@@ -7,14 +7,14 @@ from sqlalchemy import pool
 
 from app.config import get_settings
 from app.database import Base
-from app import models  # noqa: F401  (registra todas las tablas)
+from app import legacy_models, models  # noqa: F401 (both frozen and canonical metadata)
 
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 config.set_main_option("sqlalchemy.url", get_settings().database_url)
-target_metadata = Base.metadata
+target_metadata = [Base.metadata, models.Base.metadata]
 
 
 def run_migrations_offline() -> None:

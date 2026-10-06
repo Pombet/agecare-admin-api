@@ -1,6 +1,7 @@
 """Sección 7 — Uso por funcionalidad."""
 from fastapi import APIRouter, Query
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from app import models
 from app.deps import Db, require
@@ -23,7 +24,7 @@ def _check_days(days: int) -> int:
 
 async def _adoption_map(db, days: int) -> tuple[list[models.Feature], dict, dict, object]:
     """features ordenadas, uso {(feature, role): users}, activos {role: n}, computed_at."""
-    features = (await db.execute(select(models.Feature)
+    features = (await db.execute(select(models.Feature).options(selectinload(models.Feature.app_roles))
                                  .order_by(models.Feature.sort_order))).scalars().all()
     usage_rows = (await db.execute(select(models.FeatureUsageWindow)
                                    .where(models.FeatureUsageWindow.days_window == days))).scalars().all()

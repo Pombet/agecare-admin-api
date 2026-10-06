@@ -2691,3 +2691,112 @@ class SupportTicketReplies(Base):
     author_admin: Mapped[Optional['AdminUsers']] = relationship('AdminUsers', back_populates='support_ticket_replies')
     tenant: Mapped['Tenants'] = relationship('Tenants', back_populates='support_ticket_replies')
     ticket: Mapped['SupportTickets'] = relationship('SupportTickets', back_populates='support_ticket_replies')
+
+
+# Compatibility names for the original API routes. The routes are being
+# migrated to the canonical schema incrementally; keep these aliases explicit
+# so importing the API does not depend on the old prototype mappings.
+from sqlalchemy.orm import synonym as _synonym
+
+AdminUser = AdminUsers
+AdminSession = AdminSessions
+Feature = Features
+ComponentState = OpsComponentState
+CriticalProcessState = OpsCriticalProcessState
+Incident = OpsIncidents
+LatencyWindow = OpsLatencyWindow
+Ticket = SupportTickets
+TicketReply = SupportTicketReplies
+ContentItem = ContentItems
+CaregiverProfile = MarketplaceCaregivers
+Product = MarketplaceProducts
+ModerationItem = ModerationItems
+SystemSetting = SystemSettings
+LegalVersion = LegalVersions
+
+
+def _legacy_column(model, legacy_name: str, canonical_name: str) -> None:
+    if not hasattr(model, legacy_name):
+        setattr(model, legacy_name, _synonym(canonical_name))
+
+
+for _model, _aliases in (
+    (AdminUsers, {"role": "role_code", "mfa_secret": "mfa_secret_enc"}),
+    (AdminSessions, {"refresh_hash": "refresh_token_hash"}),
+    (MetricsDailyUsers, {"mrr_clp_eod": "mrr_amount"}),
+    (MetricsPlanSnapshot, {"price_clp": "price_amount", "mrr_clp": "mrr_amount"}),
+    (RoleActivityWindow, {"role": "app_role_code"}),
+    (RoleWeeklyActive, {"role": "app_role_code"}),
+    (Features, {"feature_key": "key"}),
+    (FeatureUsageWindow, {"role": "app_role_code"}),
+    (OpsComponentState, {"key": "component_key"}),
+    (OpsCriticalProcessState, {"key": "process_key"}),
+    (SupportTickets, {"category": "category_code", "requester_role": "requester_role_code",
+                      "requester_plan": "requester_plan_code"}),
+    (SupportTicketReplies, {"author_id": "author_admin_id", "internal": "is_internal"}),
+    (MarketplaceCaregivers, {"id": "caregiver_id", "name": "display_name",
+                             "certifications_verified": "certifications_verified_count"}),
+    (MarketplaceProducts, {"price_clp": "price_amount"}),
+    (ModerationItems, {"type": "item_type", "content": "content_snapshot",
+                       "author_role": "author_role_code", "reported_by": "reported_by_name",
+                       "is_safety": "is_safety_report"}),
+):
+    for _legacy_name, _canonical_name in _aliases.items():
+        _legacy_column(_model, _legacy_name, _canonical_name)
+
+
+Features.applicable_roles = property(lambda self: [role.code for role in self.app_roles])
+SupportTickets.assignee = property(lambda self: self.admin_users)
+
+
+def _relationship_name(self, relation: str, stored_name: str) -> str | None:
+    value = getattr(self, f"_{stored_name}", None)
+    if value:
+        return value
+    related = getattr(self, relation, None)
+    return related.full_name if related is not None else None
+
+
+def _store_name(self, stored_name: str, value: str | None) -> None:
+    setattr(self, f"_{stored_name}", value)
+
+
+ContentItems.created_by_name = property(
+    lambda self: _relationship_name(self, "admin_users", "created_by_name"),
+    lambda self, value: _store_name(self, "created_by_name", value),
+)
+MarketplaceCaregivers.reviewed_by_name = property(
+    lambda self: _relationship_name(self, "admin_users", "reviewed_by_name"),
+    lambda self, value: _store_name(self, "reviewed_by_name", value),
+)
+ModerationItems.decided_by_name = property(
+    lambda self: _relationship_name(self, "admin_users", "decided_by_name"),
+    lambda self, value: _store_name(self, "decided_by_name", value),
+)
+LegalVersions.created_by_name = property(
+    lambda self: _relationship_name(self, "admin_users", "created_by_name"),
+    lambda self, value: _store_name(self, "created_by_name", value),
+)
+
+
+def _setting_definition(self):
+    return self.setting_definitions
+
+
+SystemSettings.value_schema = property(lambda self: _setting_definition(self).value_schema)
+SystemSettings.description = property(lambda self: _setting_definition(self).description)
+SystemSettings.updated_by_name = property(
+    lambda self: _relationship_name(self, "admin_users", "updated_by_name"),
+    lambda self, value: _store_name(self, "updated_by_name", value),
+)
+
+
+def _tts_ready(self) -> bool:
+    return self.tts_status == "ready"
+
+
+def _set_tts_ready(self, ready: bool) -> None:
+    self.tts_status = "ready" if ready else "pending"
+
+
+ContentItems.tts_ready = property(_tts_ready, _set_tts_ready)

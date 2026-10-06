@@ -1,4 +1,4 @@
-"""Migración inicial: crea todas las tablas de la consola.
+"""Frozen prototype baseline for databases created before the canonical schema.
 
 Revision ID: 0001
 Create Date: 2026-08-28
@@ -6,7 +6,7 @@ Create Date: 2026-08-28
 from alembic import op
 
 from app.database import Base
-from app import models  # noqa: F401
+from app import legacy_models  # noqa: F401 (registers the historical tables)
 
 revision = "0001"
 down_revision = None

@@ -3,6 +3,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Query, Request, Response
 from sqlalchemy import func, select
+from sqlalchemy.orm import selectinload
 
 from app import models
 from app.audit import audit
@@ -39,7 +40,8 @@ async def list_items(db: Db,
                      q: str | None = Query(default=None, max_length=120),
                      page: int = Query(default=1, ge=1),
                      page_size: int = Query(default=25, ge=1, le=100)):
-    stmt = select(models.ContentItem).where(models.ContentItem.deleted_at.is_(None))
+    stmt = (select(models.ContentItem).options(selectinload(models.ContentItem.admin_users))
+            .where(models.ContentItem.deleted_at.is_(None)))
     if type_f:
         stmt = stmt.where(models.ContentItem.type == type_f)
     if status_f:
@@ -120,6 +122,7 @@ async def unpublish_item(item_id: UUID, request: Request, db: Db,
     if ContentStatus(item.status) != ContentStatus.published:
         raise conflict("NOT_PUBLISHED", "Solo puede retirarse contenido publicado.")
     item.status = ContentStatus.archived
+    item.archived_at = now_utc()
     await db.flush()
     await db.refresh(item)
     await audit(db, request, "content.unpublish", "content_item", item.id)

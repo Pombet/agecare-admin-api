@@ -122,3 +122,17 @@ tests/             pytest + httpx (asyncio)
   campos sensibles enmascarados.
 - Los puntos donde en producción se integraría correo, push, TTS o webhooks
   están marcados con comentarios en el código.
+
+## Esquema canónico de administración
+
+Las revisiones `0002_core` a `0007_security_retention` incorporan el modelo
+PostgreSQL canónico en el esquema `admin`, después de la migración `0001` del
+prototipo. La transición es aditiva: conserva las tablas públicas antiguas
+mientras la API se adapta al nuevo modelo. Los snapshots SQL de esas revisiones
+están en `alembic/sql/` y se mantienen inmutables una vez desplegados.
+
+Estas revisiones requieren PostgreSQL 16 y privilegios para crear extensiones,
+roles y políticas RLS. El usuario `agecare` del Compose local se crea como
+superusuario para desarrollo. En Azure se deben configurar los permisos del
+usuario de migración conforme a las capacidades del servidor. Las revisiones
+no tienen downgrade automático para evitar borrar datos.
