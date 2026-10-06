@@ -1,9 +1,9 @@
 """Sección 3 — Autenticación y gestión del staff."""
 from datetime import timedelta
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Query, Request, Response
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 
 from app import models
 from app.audit import audit
@@ -28,13 +28,21 @@ async def login(body: LoginIn, request: Request, db: Db):
     admin = q.scalar_one_or_none()
 
     async def fail(code="INVALID_CREDENTIALS", msg="Correo o contraseña incorrectos.", status=401):
-        await audit(db, request, "auth.login_failed", "admin_user",
-                    admin.id if admin else None, actor=admin)
-        await db.commit()  # persistir el intento fallido y la auditoría pese al error
+        if admin is not None:
+            db.info["tenant_id"] = admin.tenant_id
+            await db.execute(text("SELECT set_config('app.tenant_id', :tid, true)"),
+                             {"tid": str(admin.tenant_id)})
+            await audit(db, request, "auth.login_failed", "admin_user", admin.id, actor=admin)
+            await db.commit()  # persistir el intento fallido y la auditoría pese al error
         raise ApiError(status, code, msg)
 
     if admin is None:
         await fail()  # mismo error que contraseña incorrecta: no revela existencia
+    db.info["tenant_id"] = admin.tenant_id
+    await db.execute(text("SELECT set_config('app.tenant_id', :tid, true)"),
+                     {"tid": str(admin.tenant_id)})
+    await db.execute(text("SELECT set_config('app.actor_id', :aid, true)"),
+                     {"aid": str(admin.id)})
     if admin.locked_until and as_utc(admin.locked_until) > now_utc():
         raise ApiError(423, "ACCOUNT_LOCKED", "Cuenta bloqueada 15 minutos por intentos fallidos repetidos.")
     if admin.password_hash is None or not verify_password(body.password, admin.password_hash):
@@ -57,9 +65,10 @@ async def login(body: LoginIn, request: Request, db: Db):
     admin.last_login_at = now_utc()
 
     token, refresh_hash, expires = new_refresh_token()
-    db.add(models.AdminSession(admin_id=admin.id, refresh_hash=refresh_hash, expires_at=expires))
+    db.add(models.AdminSession(admin_id=admin.id, refresh_hash=refresh_hash, expires_at=expires,
+                               family_id=uuid4()))
     await audit(db, request, "auth.login", "admin_user", admin.id, actor=admin)
-    return LoginOut(access_token=create_access_token(admin.id, admin.role),
+    return LoginOut(access_token=create_access_token(admin.id, admin.role, admin.tenant_id),
                     refresh_token=token, admin=admin)
 
 
@@ -71,6 +80,9 @@ async def refresh(body: RefreshIn, db: Db):
     session = q.scalar_one_or_none()
     if session is None or as_utc(session.expires_at) < now_utc():
         raise unauthorized("La sesión no es válida o fue revocada. Inicia sesión de nuevo.", "INVALID_REFRESH")
+    db.info["tenant_id"] = session.tenant_id
+    await db.execute(text("SELECT set_config('app.tenant_id', :tid, true)"),
+                     {"tid": str(session.tenant_id)})
     if session.revoked_at is not None:
         # Reutilización de un token ya rotado: revocar todas las sesiones (posible robo).
         sessions = (await db.execute(select(models.AdminSession)
@@ -78,6 +90,8 @@ async def refresh(body: RefreshIn, db: Db):
                                             models.AdminSession.revoked_at.is_(None)))).scalars()
         for s_ in sessions:
             s_.revoked_at = now_utc()
+            s_.revoked_reason = "reuse_detected"
+        await db.commit()
         raise unauthorized("La sesión no es válida o fue revocada. Inicia sesión de nuevo.", "INVALID_REFRESH")
 
     admin = await db.get(models.AdminUser, session.admin_id)
@@ -85,12 +99,13 @@ async def refresh(body: RefreshIn, db: Db):
         raise unauthorized("La sesión no es válida o fue revocada. Inicia sesión de nuevo.", "INVALID_REFRESH")
 
     token, refresh_hash, expires = new_refresh_token()
-    new_session = models.AdminSession(admin_id=admin.id, refresh_hash=refresh_hash, expires_at=expires)
+    new_session = models.AdminSession(admin_id=admin.id, refresh_hash=refresh_hash, expires_at=expires,
+                                      family_id=session.family_id, rotated_from=session.id)
     db.add(new_session)
     await db.flush()
     session.revoked_at = now_utc()
-    session.rotated_to = new_session.id
-    return RefreshOut(access_token=create_access_token(admin.id, admin.role), refresh_token=token)
+    session.revoked_reason = "rotated"
+    return RefreshOut(access_token=create_access_token(admin.id, admin.role, admin.tenant_id), refresh_token=token)
 
 
 # ---------- 3.3 Logout ----------
@@ -102,6 +117,7 @@ async def logout(body: RefreshIn, request: Request, db: Db, admin: CurrentAdmin)
     session = q.scalar_one_or_none()
     if session is not None:
         session.revoked_at = now_utc()
+        session.revoked_reason = "logout"
     await audit(db, request, "auth.logout", "admin_user", admin.id)
     return Response(status_code=204)
 
@@ -129,15 +145,19 @@ async def create_staff(body: AdminCreateIn, request: Request, db: Db,
     require_mfa = body.require_mfa if body.require_mfa is not None else body.role == AdminRole.admin
     new = models.AdminUser(full_name=body.full_name, email=email, role=body.role,
                            is_active=False,  # pendiente hasta activar
-                           mfa_enabled=require_mfa,
-                           invitation_expires_at=now_utc() + timedelta(hours=24))
+                           mfa_required=require_mfa, mfa_enabled=False)
     db.add(new)
     await db.flush()
+    invitation_expires_at = now_utc() + timedelta(hours=24)
+    db.add(models.AdminInvitations(
+        admin_id=new.id, token_hash=hash_refresh(str(uuid4())),
+        expires_at=invitation_expires_at, created_by=admin.id,
+    ))
     # Aquí se enviaría el correo de activación (fuera del alcance de esta API).
     await audit(db, request, "staff.create", "admin_user", new.id,
                 after={"email": email, "role": body.role})
     return AdminCreateOut(id=new.id, email=new.email, role=AdminRole(new.role),
-                          invitation_expires_at=new.invitation_expires_at)
+                          invitation_expires_at=invitation_expires_at)
 
 
 # ---------- 3.6 Listar staff ----------
@@ -203,6 +223,7 @@ async def patch_staff(admin_id: UUID, body: AdminPatchIn, request: Request, db: 
                                                 models.AdminSession.revoked_at.is_(None)))).scalars()
             for s_ in sessions:
                 s_.revoked_at = now_utc()
+                s_.revoked_reason = "admin_disabled"
     await audit(db, request, "staff.update", "admin_user", target.id, before=before,
                 after={"full_name": target.full_name, "role": target.role, "is_active": target.is_active})
     return AdminUserOut.model_validate(target)

@@ -5,6 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Query, Request
 from jsonschema import Draft202012Validator
 from sqlalchemy import func, select
+from sqlalchemy.orm import selectinload
 
 from app import models
 from app.audit import audit
@@ -32,7 +33,7 @@ def _setting_out(s: models.SystemSetting) -> SettingOut:
 # ---------- 12.1 Leer configuración ----------
 @router.get("/settings", response_model=SettingsOut, dependencies=[require("settings")])
 async def get_settings_endpoint(db: Db, key: str | None = Query(default=None)):
-    stmt = select(models.SystemSetting)
+    stmt = select(models.SystemSetting).options(selectinload(models.SystemSetting.setting_definitions))
     if key:
         stmt = stmt.where(models.SystemSetting.key == key)
     rows = (await db.execute(stmt.order_by(models.SystemSetting.key))).scalars().all()
@@ -45,7 +46,11 @@ async def get_settings_endpoint(db: Db, key: str | None = Query(default=None)):
 @router.put("/settings/{key}", response_model=SettingOut)
 async def put_setting(key: str, body: SettingPutIn, request: Request, db: Db,
                       admin: models.AdminUser = require("settings", write=True)):
-    s = await db.get(models.SystemSetting, key)
+    s = (await db.execute(
+        select(models.SystemSetting)
+        .options(selectinload(models.SystemSetting.setting_definitions))
+        .where(models.SystemSetting.key == key)
+    )).scalar_one_or_none()
     if s is None:
         raise ApiError(404, "UNKNOWN_SETTING", "No existe ningún parámetro con esa clave.")
     if body.version != s.version:
@@ -60,6 +65,7 @@ async def put_setting(key: str, body: SettingPutIn, request: Request, db: Db,
     s.updated_by = admin.id
     s.updated_by_name = admin.full_name
     s.updated_at = now_utc()
+    s.change_note = body.change_note
     # La propagación real usa caché con TTL de 60 s; los servicios no requieren reinicio.
     await audit(db, request, "settings.update", "system_setting", None,
                 before=before, after={"value": s.value, "version": s.version, "note": body.change_note})
@@ -73,6 +79,7 @@ async def legal_documents(db: Db, doc_type: LegalDocType | None = Query(default=
     docs = []
     for t in types:
         rows = (await db.execute(select(models.LegalVersion)
+                                 .options(selectinload(models.LegalVersion.admin_users))
                                  .where(models.LegalVersion.doc_type == t)
                                  .order_by(models.LegalVersion.created_at.desc()))).scalars().all()
         published = [r for r in rows if r.status == "published"]
@@ -101,6 +108,7 @@ async def create_legal_version(doc_type: LegalDocType, body: LegalVersionCreateI
                                request: Request, db: Db,
                                admin: models.AdminUser = require("legal", write=True)):
     rows = (await db.execute(select(models.LegalVersion)
+                             .options(selectinload(models.LegalVersion.admin_users))
                              .where(models.LegalVersion.doc_type == doc_type))).scalars().all()
     published = [r for r in rows if r.status == "published"]
     current = max(published, key=lambda r: _semver_tuple(r.semver)) if published else None
@@ -112,7 +120,9 @@ async def create_legal_version(doc_type: LegalDocType, body: LegalVersionCreateI
     if requires_reacceptance and body.effective_date < date.today() + timedelta(days=MAJOR_NOTICE_DAYS):
         raise invalid("NOTICE_PERIOD",
                       "Un cambio mayor exige una fecha de vigencia con al menos 15 días de aviso.")
-    v = models.LegalVersion(doc_type=doc_type, semver=body.semver, content_md=body.content_md,
+    major, minor = _semver_tuple(body.semver)
+    v = models.LegalVersion(doc_type=doc_type, semver_major=major, semver_minor=minor,
+                            content_md=body.content_md,
                             changelog=body.changelog, effective_date=body.effective_date,
                             requires_reacceptance=requires_reacceptance,
                             created_by=admin.id, created_by_name=admin.full_name)
@@ -139,6 +149,7 @@ async def publish_legal_version(version_id: UUID, request: Request, db: Db,
                        "La fecha de vigencia ya pasó; crea una versión nueva con fecha futura.")
     v.status = "published"
     v.published_at = now_utc()
+    v.published_by = admin.id
     # La versión anterior queda en el histórico: los consentimientos antiguos la siguen referenciando.
     await audit(db, request, "legal.version_publish", "legal_version", v.id,
                 after={"semver": v.semver})

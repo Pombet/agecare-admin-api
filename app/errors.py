@@ -9,6 +9,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
+from sqlalchemy.exc import DBAPIError
 
 
 class ApiError(Exception):
@@ -21,6 +22,29 @@ class ApiError(Exception):
         self.details = details
         super().__init__(message)
 
+_DB_RULE_MAP = [
+    ("LAST_ADMIN", 409, "LAST_ADMIN",
+     "Debe existir al menos una cuenta admin activa; esta acción la dejaría sin ninguna."),
+    ("INVALID_TRANSITION", 409, "INVALID_TRANSITION",
+     "Ese cambio de estado no está permitido desde el estado actual."),
+    ("TICKET_CLOSED", 409, "TICKET_CLOSED",
+     "El ticket está cerrado y no admite nuevas respuestas."),
+    ("ALREADY_MODERATED", 409, "ALREADY_MODERATED",
+     "Este elemento ya fue moderado anteriormente."),
+    ("VERSION_CONFLICT", 409, "VERSION_CONFLICT",
+     "Otra persona modificó este registro antes que tú. Vuelve a cargarlo e inténtalo de nuevo."),
+    ("inmutable", 409, "IMMUTABLE_RECORD",
+     "Este registro ya no se puede modificar en su estado actual."),
+]
+
+
+def _translate_db_error(exc: DBAPIError) -> ApiError:
+    diag = getattr(exc.orig, "diag", None)
+    raw = diag.message_primary if diag and diag.message_primary else str(exc.orig)
+    for needle, status, code, friendly in _DB_RULE_MAP:
+        if needle in raw:
+            return ApiError(status, code, friendly)
+    return ApiError(500, "INTERNAL_ERROR", "Error interno. Revisa el request_id en los logs.")
 
 # Atajos para los errores más comunes
 def unauthorized(message: str = "Tu sesión de administración expiró. Vuelve a iniciar sesión.",

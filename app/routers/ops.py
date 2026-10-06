@@ -4,6 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Query, Request
 from sqlalchemy import func, select
+from sqlalchemy.orm import selectinload
 
 from app import models
 from app.audit import audit
@@ -71,9 +72,13 @@ async def latency(db: Db,
 # ---------- 5.3 Critical processes ----------
 @router.get("/critical-processes", response_model=CriticalProcessesOut, dependencies=[require("ops")])
 async def critical_processes(db: Db):
-    rows = (await db.execute(select(models.CriticalProcessState))).scalars().all()
+    rows = (await db.execute(
+        select(models.CriticalProcessState)
+        .options(selectinload(models.CriticalProcessState.critical_processes))
+    )).scalars().all()
     return CriticalProcessesOut(
-        processes=[CriticalProcessOut(key=r.key, name=r.name, chain=r.chain,
+        processes=[CriticalProcessOut(key=r.key, name=r.critical_processes.name,
+                                      chain=r.critical_processes.chain,
                                       p95_seconds=r.p95_seconds, success_24h=r.success_24h,
                                       status=ComponentStatus(r.status)) for r in rows],
         computed_at=max((r.computed_at for r in rows), default=now_utc()))

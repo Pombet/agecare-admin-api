@@ -3,6 +3,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Query, Request
 from sqlalchemy import func, select
+from sqlalchemy.orm import selectinload
 
 from app import models
 from app.audit import audit
@@ -21,7 +22,8 @@ def _out(m: models.ModerationItem) -> ModerationItemOut:
         id=m.id, type=ModerationItemType(m.type), content=m.content,
         author={"user_id": str(m.author_user_id) if m.author_user_id else None,
                 "name": m.author_name, "role": m.author_role},
-        reported_by=m.reported_by, report_reason=m.report_reason,
+        reported_by={"name": m.reported_by, "role": None} if m.reported_by else None,
+        report_reason=m.report_reason,
         status=ModerationStatus(m.status), decided_by_name=m.decided_by_name,
         decided_at=m.decided_at, created_at=m.created_at)
 
@@ -42,7 +44,8 @@ async def queue(db: Db,
                 status_f: ModerationStatus = Query(default=ModerationStatus.pending, alias="status"),
                 page: int = Query(default=1, ge=1),
                 page_size: int = Query(default=25, ge=1, le=100)):
-    stmt = select(models.ModerationItem).where(models.ModerationItem.status == status_f)
+    stmt = (select(models.ModerationItem).options(selectinload(models.ModerationItem.admin_users))
+            .where(models.ModerationItem.status == status_f))
     if type_f:
         stmt = stmt.where(models.ModerationItem.type == type_f)
     total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()

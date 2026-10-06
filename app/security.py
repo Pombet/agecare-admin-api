@@ -43,11 +43,12 @@ def as_utc(dt: datetime | None) -> datetime | None:
     return dt
 
 
-def create_access_token(admin_id: UUID, role: str) -> str:
+def create_access_token(admin_id: UUID, role: str, tenant_id: UUID) -> str:
     s = get_settings()
     payload = {
         "sub": str(admin_id),
         "role": role,
+        "tid": str(tenant_id),
         "type": "access",
         "iat": int(now_utc().timestamp()),
         "exp": now_utc() + timedelta(minutes=s.access_token_minutes),

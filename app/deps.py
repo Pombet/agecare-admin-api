@@ -5,6 +5,7 @@ from uuid import UUID
 import jwt
 from fastapi import Depends, Request
 from sqlalchemy import select
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import models
@@ -23,9 +24,24 @@ async def get_current_admin(request: Request,
         payload = decode_access_token(auth.removeprefix("Bearer ").strip())
     except jwt.PyJWTError:
         raise unauthorized()
-    admin = await db.get(models.AdminUser, UUID(payload["sub"]))
+    try:
+        tenant_id = UUID(payload["tid"])
+        admin_id = UUID(payload["sub"])
+    except (KeyError, TypeError, ValueError):
+        raise unauthorized()
+    await db.execute(text("SELECT set_config('app.tenant_id', :tid, true)"),
+                     {"tid": str(tenant_id)})
+    db.info["tenant_id"] = tenant_id
+    admin = await db.get(models.AdminUser, admin_id)
     if admin is None or not admin.is_active:
         raise unauthorized()
+    if admin.tenant_id != tenant_id:
+        raise unauthorized()
+    await db.execute(
+        text("SELECT set_config('app.actor_id', :aid, true)"),
+        {"aid": str(admin.id)},
+    )
+    db.info["actor_id"] = admin.id
     request.state.actor = admin
     return admin
 
