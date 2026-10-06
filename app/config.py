@@ -10,6 +10,8 @@ class Settings(BaseSettings):
     app_name: str = "AgeCare Admin API"
     environment: str = "dev"  # dev | staging | prod
     database_url: str = "postgresql+asyncpg://agecare:agecare@localhost:5432/agecare_admin"
+    database_ssl: bool = False
+    cors_origins: str = ""
 
     # JWT
     jwt_secret: str = "cambia-esto-en-produccion"
@@ -28,6 +30,11 @@ class Settings(BaseSettings):
     @property
     def allowed_domains(self) -> list[str]:
         return [d.strip().lower() for d in self.allowed_email_domains.split(",") if d.strip()]
+
+    @property
+    def allowed_origins(self) -> list[str]:
+        return [origin.strip().rstrip("/") for origin in self.cors_origins.split(",")
+                if origin.strip()]
 
 
 @lru_cache

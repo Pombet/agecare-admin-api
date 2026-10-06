@@ -1,5 +1,6 @@
 """Motor async de SQLAlchemy y sesión por petición."""
 from collections.abc import AsyncIterator
+import ssl
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Session
@@ -27,10 +28,18 @@ _engine = None
 _session_factory: async_sessionmaker[AsyncSession] | None = None
 
 
+def get_database_connect_args() -> dict:
+    """TLS con verificación del certificado para PostgreSQL remoto."""
+    if get_settings().database_ssl:
+        return {"ssl": ssl.create_default_context()}
+    return {}
+
+
 def get_engine():
     global _engine, _session_factory
     if _engine is None:
-        _engine = create_async_engine(get_settings().database_url, pool_pre_ping=True)
+        _engine = create_async_engine(get_settings().database_url, pool_pre_ping=True,
+                                      connect_args=get_database_connect_args())
         _session_factory = async_sessionmaker(_engine, expire_on_commit=False)
     return _engine
 

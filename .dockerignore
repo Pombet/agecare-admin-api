@@ -1,0 +1,13 @@
+.git
+.venv
+.vercel
+.env
+.env.*
+!.env.example
+.agents
+.claude
+skills-lock.json
+__pycache__
+.pytest_cache
+*.pyc
+app/models_new.py

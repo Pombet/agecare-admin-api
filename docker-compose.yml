@@ -23,6 +23,7 @@ services:
     environment:
       ADMIN_DATABASE_URL: postgresql+asyncpg://agecare:agecare@db:5432/agecare_admin
       ADMIN_JWT_SECRET: solo-para-desarrollo
+      ADMIN_CORS_ORIGINS: ${ADMIN_CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
     ports:
       - "8000:8000"
     command: >

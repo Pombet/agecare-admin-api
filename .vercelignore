@@ -1,0 +1,14 @@
+.git/
+.venv/
+.vercel/
+.agents/
+.claude/
+skills-lock.json
+__pycache__/
+**/__pycache__/
+.pytest_cache/
+tests/
+.env
+.env.*
+app/models_new.py
+*.pyc
