@@ -193,6 +193,8 @@ async def audit_log(db: Db,
         actor={"admin_id": str(r.actor_id) if r.actor_id else None,
                "name": r.actor_name, "role": r.actor_role},
         action=r.action, entity_type=r.entity_type, entity_id=r.entity_id,
-        before=r.before, after=r.after, ip=r.ip, user_agent=r.user_agent,
+        # asyncpg devuelve INET como IPv4Address/IPv6Address; el contrato usa texto.
+        before=r.before, after=r.after, ip=str(r.ip) if r.ip is not None else None,
+        user_agent=r.user_agent,
         created_at=r.created_at) for r in rows],
         page=page, page_size=page_size, total=total)
