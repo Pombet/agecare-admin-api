@@ -14,6 +14,8 @@ auditoría).
 
 Para el equipo frontend: **[guía de integración y base de datos](docs/FRONTEND.md)**.
 El DDL completo está en **[sql/agecare_admin_ddl.sql](sql/agecare_admin_ddl.sql)**.
+Para comprobar escrituras desde Swagger directamente en PostgreSQL:
+**[pruebas de persistencia en Neon](docs/PRUEBAS_NEON.md)**.
 
 ```bash
 docker compose up --build

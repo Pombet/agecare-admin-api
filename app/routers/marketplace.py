@@ -109,7 +109,8 @@ async def create_product(body: ProductCreateIn, request: Request, db: Db,
                          admin: models.AdminUser = require("marketplace", write=True)):
     p = models.Product(name=body.name, category=body.category, vendor=body.vendor,
                        price_clp=body.price_clp, external_url=str(body.external_url),
-                       image_url=str(body.image_url) if body.image_url else None)
+                       image_url=str(body.image_url) if body.image_url else None,
+                       created_by=admin.id)
     db.add(p)
     await db.flush()
     await db.refresh(p)
@@ -137,6 +138,11 @@ async def patch_product(product_id: UUID, body: ProductPatchIn, request: Request
         p.image_url = str(body.image_url)
     if body.status is not None:
         p.status = body.status
+        if body.status == ContentStatus.published and p.published_at is None:
+            p.published_at = now_utc()
+        elif body.status == ContentStatus.archived and p.archived_at is None:
+            p.archived_at = now_utc()
+    p.updated_by = admin.id
     p.updated_at = now_utc()
     await db.flush()
     await db.refresh(p)
