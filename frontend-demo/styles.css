@@ -54,7 +54,7 @@ textarea{resize:vertical}
 .button.small-button{font-size:11px;padding:5px 8px}
 .full-width{width:100%}
 .workspace{display:grid;grid-template-columns:205px minmax(0,1fr);max-width:1480px;margin:auto;min-height:calc(100vh - 76px)}
-.sidebar{padding:28px 20px;border-right:1px solid var(--border);display:flex;flex-direction:column}
+.sidebar{padding:28px 20px;border-right:1px solid var(--border);display:flex;flex-direction:column;min-width:0}
 .sidebar .eyebrow{padding-left:12px}
 nav{display:grid;gap:5px}
 .nav-button{border:0;background:transparent;text-align:left;font-size:13px;padding:11px 12px;border-radius:5px;color:#68758a}
