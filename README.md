@@ -17,6 +17,29 @@ El DDL completo está en **[sql/agecare_admin_ddl.sql](sql/agecare_admin_ddl.sql
 Para comprobar escrituras desde Swagger directamente en PostgreSQL:
 **[pruebas de persistencia en Neon](docs/PRUEBAS_NEON.md)**.
 
+## Interfaz de demostración
+
+Abrir **https://agecare-admin-pruebas.vercel.app/demo/** para mostrar el backend
+con una interfaz sencilla. Permite iniciar sesión con las cuentas demo,
+consultar métricas, tickets, personal y auditoría, crear productos e incidentes,
+publicar/archivar productos y resolver incidentes.
+
+La interfaz consume la API real y conserva los tokens en memoria durante la
+sesión. Al recargar la página hay que iniciar sesión de nuevo. Las operaciones
+de escritura guardan cambios en la base demo; «Ver registro» muestra el UUID
+y una consulta SQL para comprobar la fila en Neon.
+
+FastAPI sirve los archivos de frontend-demo/ en /demo/, tanto en Docker
+como en Vercel. No requiere instalar Node ni compilar un frontend.
+Para editar la interfaz por separado, desde la raíz del repositorio:
+
+~~~powershell
+python -m http.server 3000 --bind 127.0.0.1 --directory frontend-demo
+~~~
+
+Abrir http://localhost:3000; esta vista local consume la API de prueba publicada.
+La raíz / de la API redirige a la demo. Swagger conserva su ruta habitual.
+
 ```bash
 docker compose up --build
 ```

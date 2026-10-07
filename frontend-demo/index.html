@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>AgeCare · Administración</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="./" aria-label="AgeCare, inicio"><span class="brand-mark">AC</span><span>AgeCare <small>Administración</small></span></a>
+    <div class="topbar-actions">
+      <span id="connection" class="badge">Conectando…</span>
+      <a id="swagger-link" class="text-link" href="/api/v1/admin/docs" target="_blank" rel="noopener">Swagger ↗</a>
+      <button id="logout" class="button subtle" type="button" hidden>Cerrar sesión</button>
+    </div>
+  </header>
+
+  <main id="login-screen" class="login-layout">
+    <section class="login-intro">
+      <p class="eyebrow">DEMOSTRACIÓN DEL BACKEND</p>
+      <h1>Los avances,<br>en una sola vista.</h1>
+      <p class="lead">Consulta la información de administración y muestra cómo los cambios se guardan en la base de datos.</p>
+      <div class="intro-facts">
+        <div><span class="fact-number">01</span><p><strong>Acceso por rol</strong><br>Inicio de sesión y permisos de staff.</p></div>
+        <div><span class="fact-number">02</span><p><strong>Datos compartidos</strong><br>Consultas a la API publicada.</p></div>
+        <div><span class="fact-number">03</span><p><strong>Cambios persistentes</strong><br>Productos, incidentes y auditoría.</p></div>
+      </div>
+      <p class="muted">Entorno de prueba con datos de demostración.</p>
+    </section>
+    <section class="card login-card" aria-labelledby="login-title">
+      <p class="eyebrow">ACCESO A LA CONSOLA</p>
+      <h2 id="login-title">Iniciar sesión</h2>
+      <p class="muted">Puedes usar una cuenta demo para la presentación.</p>
+      <form id="login-form">
+        <label>Cuenta de demostración
+          <select id="demo-account">
+            <option value="admin">Administrador · acceso completo</option>
+            <option value="soporte">Soporte · tickets y operación</option>
+            <option value="analista">Analista · consultas y métricas</option>
+            <option value="editora">Editora · productos y contenido</option>
+          </select>
+        </label>
+        <label>Correo<input id="email" type="email" autocomplete="username" required value="admin@wellq.co.uk"></label>
+        <label>Contraseña<input id="password" type="password" autocomplete="current-password" required value="Admin123!"></label>
+        <label>Código MFA <span class="optional">(si tu cuenta lo requiere)</span><input id="otp" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="Opcional"></label>
+        <p id="login-error" class="inline-error" role="alert" hidden></p>
+        <button class="button primary full-width" type="submit">Entrar a la consola</button>
+      </form>
+    </section>
+  </main>
+
+  <div id="application" hidden>
+    <div class="workspace">
+      <aside class="sidebar" aria-label="Navegación">
+        <p class="eyebrow">CONSOLA</p>
+        <nav id="navigation">
+          <button type="button" data-view="overview" class="nav-button active">Resumen</button>
+          <button type="button" data-view="products" data-permission="marketplace" class="nav-button">Productos</button>
+          <button type="button" data-view="incidents" data-permission="ops" class="nav-button">Incidentes</button>
+          <button type="button" data-view="support" data-permission="support" class="nav-button">Soporte</button>
+          <button type="button" data-view="staff" data-permission="staff" class="nav-button">Personal</button>
+          <button type="button" data-view="activity" data-permission="audit" class="nav-button">Actividad</button>
+        </nav>
+        <div class="account-summary"><span class="avatar" id="avatar">A</span><div><strong id="account-name"></strong><small id="account-role"></small></div></div>
+      </aside>
+      <main class="content">
+        <div class="page-heading">
+          <div><p class="eyebrow">ENTORNO DE DEMOSTRACIÓN</p><h1 id="page-title">Resumen</h1><p id="page-description" class="muted"></p></div>
+          <button id="refresh" class="button" type="button">Actualizar datos</button>
+        </div>
+        <div id="notice" class="notice" role="status" hidden></div>
+
+        <section id="view-overview" class="view">
+          <div id="metrics" class="metric-grid"><p class="muted">Cargando resumen…</p></div>
+          <div class="overview-grid">
+            <section class="card"><div class="card-heading"><h2>Estado operativo</h2><span id="overall-status"></span></div><p class="muted small">Estado de demostración registrado por el backend.</p><div id="components" class="table-wrap"></div></section>
+            <section class="card"><div class="card-heading"><h2>Qué puedes mostrar</h2><span class="badge">API real</span></div>
+              <ol class="demo-steps"><li>Inicia sesión y consulta tus permisos.</li><li>Crea un producto o registra un incidente.</li><li>Actualiza la lista para comprobar el cambio.</li><li>Abre «Ver registro» y copia la consulta para Neon.</li><li>Consulta la actividad para ver la auditoría.</li></ol>
+              <p class="muted small">Los cambios de esta consola se guardan. Usa nombres que identifiquen tus pruebas.</p>
+            </section>
+          </div>
+          <section id="adoption-card" class="card section-card"><div class="card-heading"><h2>Uso por funcionalidad</h2><span class="muted small">Últimos 30 días</span></div><div id="adoption" class="table-wrap"></div></section>
+        </section>
+
+        <section id="view-products" class="view" hidden>
+          <div class="section-toolbar"><div class="filters"><label class="sr-only" for="product-search">Buscar producto</label><input id="product-search" type="search" placeholder="Buscar por nombre o proveedor"><label class="sr-only" for="product-status">Estado del producto</label><select id="product-status"><option value="">Todos los estados</option><option value="draft">Borrador</option><option value="published">Publicado</option><option value="archived">Archivado</option></select><button id="product-filter" class="button">Buscar</button></div><button id="new-product" class="button primary">Nuevo producto</button></div>
+          <section class="card"><div id="products-table" class="table-wrap"></div><div id="products-pager" class="pager"></div></section>
+        </section>
+
+        <section id="view-incidents" class="view" hidden>
+          <div class="section-toolbar"><div class="filters"><label class="sr-only" for="incident-status">Estado del incidente</label><select id="incident-status"><option value="">Todos los estados</option><option value="investigating">En investigación</option><option value="observing">En observación</option><option value="resolved">Resuelto</option><option value="completed">Completado</option></select><span class="muted small">Últimos 365 días</span></div><button id="new-incident" class="button primary">Nuevo incidente</button></div>
+          <section class="card"><div id="incidents-table" class="table-wrap"></div><div id="incidents-pager" class="pager"></div></section>
+        </section>
+
+        <section id="view-support" class="view" hidden>
+          <div id="support-metrics" class="metric-grid"></div>
+          <div class="section-toolbar"><div class="filters"><label class="sr-only" for="ticket-search">Buscar ticket</label><input id="ticket-search" type="search" placeholder="Buscar por asunto, correo o número"><label class="sr-only" for="ticket-status">Estado del ticket</label><select id="ticket-status"><option value="">Todos los estados</option><option value="open">Abierto</option><option value="in_progress">En curso</option><option value="waiting_user">Esperando usuario</option><option value="resolved">Resuelto</option><option value="closed">Cerrado</option></select><button id="ticket-filter" class="button">Buscar</button></div></div>
+          <section class="card"><div id="tickets-table" class="table-wrap"></div><div id="tickets-pager" class="pager"></div></section>
+        </section>
+
+        <section id="view-staff" class="view" hidden><section class="card"><div id="staff-table" class="table-wrap"></div><div id="staff-pager" class="pager"></div></section></section>
+        <section id="view-activity" class="view" hidden><section class="card"><div class="card-heading"><h2>Registro de auditoría</h2><span class="muted small">Acciones guardadas por el backend</span></div><div id="activity-table" class="table-wrap"></div><div id="activity-pager" class="pager"></div></section></section>
+        <footer class="footer"><span>AgeCare · Consola de demostración</span><span id="last-updated">Datos aún no consultados</span></footer>
+      </main>
+    </div>
+  </div>
+
+  <dialog id="product-dialog" aria-labelledby="product-title">
+    <div class="dialog-heading"><h2 id="product-title">Nuevo producto</h2><button class="close-button" data-close="product-dialog" aria-label="Cerrar">×</button></div>
+    <p class="muted">El identificador se genera al guardar.</p>
+    <form id="product-form">
+      <label>Nombre<input name="name" required minlength="3" maxlength="160" placeholder="Producto de prueba"></label>
+      <div class="form-grid"><label>Categoría<input name="category" required minlength="2" maxlength="60" placeholder="Apoyo"></label><label>Proveedor<input name="vendor" required minlength="2" maxlength="120" placeholder="Equipo AgeCare"></label></div>
+      <label>Precio en CLP <span class="optional">(opcional)</span><input name="price_clp" type="number" min="0" step="1" placeholder="1500"></label>
+      <label>Enlace externo HTTPS<input name="external_url" type="url" required maxlength="500" placeholder="https://example.com/producto"></label>
+      <label>Enlace de imagen <span class="optional">(opcional)</span><input name="image_url" type="url" maxlength="500" placeholder="https://example.com/imagen.jpg"></label>
+      <p class="inline-error" role="alert" hidden></p>
+      <div class="dialog-actions"><button type="button" class="button" data-close="product-dialog">Cancelar</button><button class="button primary" type="submit">Guardar producto</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="incident-dialog" aria-labelledby="incident-title">
+    <div class="dialog-heading"><h2 id="incident-title">Nuevo incidente</h2><button class="close-button" data-close="incident-dialog" aria-label="Cerrar">×</button></div>
+    <form id="incident-form">
+      <label>Título<input name="title" required minlength="5" maxlength="160" placeholder="Incidente ficticio de prueba"></label>
+      <div class="form-grid"><label>Componente<select name="component_key"><option value="database">Base de datos</option><option value="api_core">API central</option><option value="auth">Autenticación</option><option value="push">Notificaciones push</option><option value="wearable_ingest">Ingesta wearables</option><option value="storage">Almacenamiento</option><option value="alert_engine">Motor de alertas</option><option value="ai_assistant">Asistente IA</option><option value="music_sync">Director Musical</option></select></label><label>Severidad<select name="severity"><option value="degraded">Degradación</option><option value="outage">Interrupción</option></select></label></div>
+      <label>Descripción<textarea name="description" required maxlength="4000" rows="3" placeholder="Describe la situación de prueba."></textarea></label>
+      <label>Fecha y hora de inicio <span class="optional">(hora local)</span><input name="started_at" type="datetime-local" required></label>
+      <label class="checkbox-label"><input name="is_maintenance" type="checkbox"> Mantenimiento programado</label>
+      <p class="muted small">Registrar un incidente no cambia automáticamente el estado global del servicio.</p>
+      <p class="inline-error" role="alert" hidden></p>
+      <div class="dialog-actions"><button type="button" class="button" data-close="incident-dialog">Cancelar</button><button class="button primary" type="submit">Guardar incidente</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="resolution-dialog" aria-labelledby="resolution-title">
+    <div class="dialog-heading"><h2 id="resolution-title">Resolver incidente</h2><button class="close-button" data-close="resolution-dialog" aria-label="Cerrar">×</button></div>
+    <p id="resolution-subject" class="muted"></p>
+    <form id="resolution-form"><label>Nota de resolución<textarea name="resolution" required maxlength="2000" rows="4" placeholder="Explica cómo terminó el incidente o la prueba."></textarea></label><p class="inline-error" role="alert" hidden></p><div class="dialog-actions"><button class="button" type="button" data-close="resolution-dialog">Cancelar</button><button class="button primary" type="submit">Marcar como resuelto</button></div></form>
+  </dialog>
+
+  <dialog id="record-dialog" class="wide-dialog" aria-labelledby="record-title">
+    <div class="dialog-heading"><h2 id="record-title">Registro guardado</h2><button class="close-button" data-close="record-dialog" aria-label="Cerrar">×</button></div>
+    <div id="record-content"></div>
+    <div id="sql-section" hidden><h3>Comprobar en Neon</h3><p class="muted small">Selecciona la base conectada a la API y ejecuta esta consulta en el editor SQL.</p><pre id="record-sql"></pre><button id="copy-sql" class="button" type="button">Copiar consulta</button></div>
+    <div class="dialog-actions"><button class="button" type="button" data-close="record-dialog">Cerrar</button></div>
+  </dialog>
+</body>
+</html>
