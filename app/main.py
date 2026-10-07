@@ -1,5 +1,6 @@
 """AgeCare — API de la Consola de Administración (FastAPI + PostgreSQL)."""
 from fastapi import APIRouter, FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.errors import RequestIdMiddleware, register_error_handlers
@@ -16,6 +17,15 @@ app = FastAPI(
 )
 app.add_middleware(RequestIdMiddleware)
 register_error_handlers(app)
+
+if get_settings().allowed_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=get_settings().allowed_origins,
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type", "X-Request-Id"],
+        expose_headers=["X-Request-Id"],
+    )
 
 api = APIRouter(prefix="/api/v1/admin")
 api.include_router(auth.router)

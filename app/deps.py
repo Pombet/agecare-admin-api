@@ -4,6 +4,7 @@ from uuid import UUID
 
 import jwt
 from fastapi import Depends, Request
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,13 +16,21 @@ from app.errors import forbidden, unauthorized
 from app.security import decode_access_token
 
 
+bearer_auth = HTTPBearer(
+    auto_error=False,
+    scheme_name="BearerAuth",
+    description="Pega únicamente el access_token devuelto por POST /auth/login.",
+)
+
+
 async def get_current_admin(request: Request,
-                            db: Annotated[AsyncSession, Depends(get_db)]) -> models.AdminUser:
-    auth = request.headers.get("Authorization", "")
-    if not auth.startswith("Bearer "):
+                            db: Annotated[AsyncSession, Depends(get_db)],
+                            credentials: Annotated[HTTPAuthorizationCredentials | None,
+                                                   Depends(bearer_auth)]) -> models.AdminUser:
+    if credentials is None:
         raise unauthorized()
     try:
-        payload = decode_access_token(auth.removeprefix("Bearer ").strip())
+        payload = decode_access_token(credentials.credentials.strip())
     except jwt.PyJWTError:
         raise unauthorized()
     try:

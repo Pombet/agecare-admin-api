@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from sqlalchemy import pool
 
 from app.config import get_settings
-from app.database import Base
+from app.database import Base, get_database_connect_args
 from app import legacy_models, models  # noqa: F401 (both frozen and canonical metadata)
 
 config = context.config
@@ -33,7 +33,8 @@ def do_run_migrations(connection) -> None:
 
 async def run_migrations_online() -> None:
     connectable = async_engine_from_config(config.get_section(config.config_ini_section, {}),
-                                           prefix="sqlalchemy.", poolclass=pool.NullPool)
+                                           prefix="sqlalchemy.", poolclass=pool.NullPool,
+                                           connect_args=get_database_connect_args())
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)
     await connectable.dispose()

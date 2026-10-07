@@ -12,6 +12,9 @@ auditoría).
 
 ## Arranque rápido (Docker)
 
+Para el equipo frontend: **[guía de integración y base de datos](docs/FRONTEND.md)**.
+El DDL completo está en **[sql/agecare_admin_ddl.sql](sql/agecare_admin_ddl.sql)**.
+
 ```bash
 docker compose up --build
 ```
@@ -78,11 +81,12 @@ curl -s "$BASE/metrics/features/alerts?threshold=0.15" -H "$AUTH"
 ## Tests
 
 ```bash
-pytest            # 23 pruebas: auth/roles, métricas, tickets, settings, auditoría
+pytest tests/test_deployment.py -q
 ```
 
-La suite corre sobre SQLite en memoria (sin PostgreSQL) gracias a tipos
-portables; el despliegue real usa PostgreSQL vía `ADMIN_DATABASE_URL`.
+Estas pruebas verifican TLS, arranque y CORS sin conectarse a PostgreSQL.
+La suite antigua usa fixtures SQLite del prototipo; requiere adaptación antes
+de poder validar el esquema canónico PostgreSQL completo.
 
 ## Estructura
 
