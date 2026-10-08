@@ -1,10 +1,6 @@
 """AgeCare — API de la Consola de Administración (FastAPI + PostgreSQL)."""
-from pathlib import Path
-
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
-from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
 from app.errors import RequestIdMiddleware, register_error_handlers
@@ -43,14 +39,6 @@ api.include_router(marketplace.router)
 api.include_router(moderation.router)
 api.include_router(system_router.router)
 app.include_router(api)
-
-app.mount("/demo", StaticFiles(directory=Path(__file__).resolve().parents[1] / "frontend-demo",
-                              html=True), name="demo")
-
-
-@app.get("/", include_in_schema=False)
-async def demo_home():
-    return RedirectResponse("/demo/")
 
 
 @app.get("/health", tags=["Salud"])

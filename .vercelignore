@@ -8,6 +8,7 @@ __pycache__/
 **/__pycache__/
 .pytest_cache/
 tests/
+frontend-demo/
 .env
 .env.*
 app/models_new.py

@@ -17,11 +17,11 @@ cuentas ficticias documentadas en el README del proyecto.
 
 ## Ejecución
 
-FastAPI sirve estos archivos en /demo/. En Vercel se incluyen en el paquete
-Python mediante includeFiles. No se agregan variables ni claves de Neon
-al frontend.
+La interfaz se conserva para uso local. La API no sirve estos archivos en
+/demo/ y .vercelignore los excluye del despliegue. No se agregan variables ni
+claves de Neon al frontend.
 
-Para servirlos por separado:
+Para servirlos localmente:
 
 ~~~powershell
 python -m http.server 3000 --bind 127.0.0.1 --directory frontend-demo
@@ -30,8 +30,7 @@ python -m http.server 3000 --bind 127.0.0.1 --directory frontend-demo
 Abrir http://localhost:3000. Los orígenes locales localhost y 127.0.0.1 se
 reconocen como desarrollo, pero el permiso CORS actualmente está configurado
 para **localhost:3000** y **localhost:5173**: abrir la URL con localhost.
-En desarrollo se usa la API publicada. Bajo /demo/ en el backend se usa
-la API del mismo dominio.
+En localhost se usa la API de prueba publicada.
 
 ## Sesiones y datos
 
