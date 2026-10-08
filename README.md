@@ -17,29 +17,6 @@ El DDL completo está en **[sql/agecare_admin_ddl.sql](sql/agecare_admin_ddl.sql
 Para comprobar escrituras desde Swagger directamente en PostgreSQL:
 **[pruebas de persistencia en Neon](docs/PRUEBAS_NEON.md)**.
 
-## Interfaz de demostración
-
-Abrir **https://agecare-admin-pruebas.vercel.app/demo/** para mostrar el backend
-con una interfaz sencilla. Permite iniciar sesión con las cuentas demo,
-consultar métricas, tickets, personal y auditoría, crear productos e incidentes,
-publicar/archivar productos y resolver incidentes.
-
-La interfaz consume la API real y conserva los tokens en memoria durante la
-sesión. Al recargar la página hay que iniciar sesión de nuevo. Las operaciones
-de escritura guardan cambios en la base demo; «Ver registro» muestra el UUID
-y una consulta SQL para comprobar la fila en Neon.
-
-FastAPI sirve los archivos de frontend-demo/ en /demo/, tanto en Docker
-como en Vercel. No requiere instalar Node ni compilar un frontend.
-Para editar la interfaz por separado, desde la raíz del repositorio:
-
-~~~powershell
-python -m http.server 3000 --bind 127.0.0.1 --directory frontend-demo
-~~~
-
-Abrir http://localhost:3000; esta vista local consume la API de prueba publicada.
-La raíz / de la API redirige a la demo. Swagger conserva su ruta habitual.
-
 ```bash
 docker compose up --build
 ```
@@ -47,6 +24,22 @@ docker compose up --build
 Levanta PostgreSQL, aplica la migración, siembra datos demo y sirve la API en
 `http://localhost:8000`. Documentación interactiva (Swagger):
 `http://localhost:8000/api/v1/admin/docs`.
+
+## Interfaz de demostración conservada para uso local
+
+Los archivos de [frontend-demo/](frontend-demo/README.md) se conservan para
+presentaciones locales. La API no monta /demo/ ni redirige su raíz a la interfaz;
+el frontend queda excluido de los despliegues Vercel. La API de prueba publicada
+se utiliza desde **https://agecare-admin-pruebas.vercel.app/api/v1/admin/docs**.
+
+Para abrir la interfaz local, desde la raíz del repositorio:
+
+~~~powershell
+python -m http.server 3000 --bind 127.0.0.1 --directory frontend-demo
+~~~
+
+Abrir http://localhost:3000. Esta interfaz consume la API de prueba publicada
+y sus operaciones de escritura modifican la base demo.
 
 ## Arranque manual
 
