@@ -98,13 +98,39 @@ curl -s "$BASE/metrics/features/alerts?threshold=0.15" -H "$AUTH"
 
 ## Tests
 
-```bash
-pytest tests/test_deployment.py -q
+Requieren Python 3.12 o posterior y Docker Desktop con el motor Linux iniciado.
+Desde la raíz de este repositorio, en PowerShell:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.\.venv\Scripts\python.exe -m pytest -q
 ```
 
-Estas pruebas verifican TLS, arranque y CORS sin conectarse a PostgreSQL.
-La suite antigua usa fixtures SQLite del prototipo; requiere adaptación antes
-de poder validar el esquema canónico PostgreSQL completo.
+La primera ejecución descarga `postgres:16-alpine`. Testcontainers crea una
+instancia temporal con puerto aleatorio, aplica `alembic upgrade head`, carga
+el seed y elimina el contenedor al terminar. No usa la base demo ni las
+credenciales de `.env`. Cada test revierte sus cambios mediante una transacción
+exterior y SAVEPOINT, incluso si el endpoint ejecuta `commit()`.
+
+Las pruebas HTTP usan el propietario de la base, como el entorno demo actual.
+Las pruebas específicas de RLS cambian explícitamente a `agecare_admin_api` y
+`agecare_admin_ro`: así comprueban las políticas sin la exención del propietario.
+Esto no certifica aún que todos los endpoints funcionen con el rol restringido.
+
+Para ejecutar solo las pruebas que no necesitan PostgreSQL ni Docker:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests/test_deployment.py tests/test_marketplace_writes.py -q
+```
+
+La suite incluye aislamiento entre tenants, rechazo de escrituras cruzadas,
+historial automático e inmutabilidad de auditoría. La prueba de auditoría ya
+no depende de que otro test haya modificado la configuración previamente.
+
+Si Docker no está iniciado, iniciar Docker Desktop y esperar a que
+`docker info` responda. Si la instalación no puede resolver `pypi.org`, se
+necesita acceso a ese índice de paquetes antes de poder ejecutar la suite.
 
 ## Estructura
 

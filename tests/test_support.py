@@ -95,7 +95,7 @@ async def test_settings_optimistic_lock(client, admin_headers):
 
 
 async def test_audit_log_records_actions(client, admin_headers):
-    r = await client.get(f"{BASE}/audit-log", params={"action": "settings.update"},
+    r = await client.get(f"{BASE}/audit-log", params={"action": "auth.login"},
                          headers=admin_headers)
     assert r.status_code == 200
     assert r.json()["total"] >= 1
