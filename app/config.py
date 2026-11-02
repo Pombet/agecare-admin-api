@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://agecare:agecare@localhost:5432/agecare_admin"
     database_ssl: bool = False
     cors_origins: str = ""
+    # Solo juegos: origen HTTPS público, sin /static ni barra final.
+    game_public_base_url: str = ""
 
     # JWT
     jwt_secret: str = "cambia-esto-en-produccion"

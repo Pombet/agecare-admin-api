@@ -11,6 +11,38 @@ class Base(DeclarativeBase):
     pass
 
 
+class GameApp(Base):
+    """Catálogo de juegos por organización; archivos comunes, publicación independiente."""
+    __tablename__ = 'games_apps'
+    __table_args__ = (
+        ForeignKeyConstraint(['tenant_id'], ['admin.tenants.id']),
+        UniqueConstraint('tenant_id', 'slug', name='games_apps_tenant_slug_uq'),
+        CheckConstraint("item_type IN ('game', 'app')", name='games_apps_type_ck'),
+        CheckConstraint("min_tier IN ('gratuito', 'dorado', 'platino')", name='games_apps_tier_ck'),
+        Index('games_apps_tenant_active_idx', 'tenant_id', 'is_active'),
+        {'schema': 'admin'},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4, server_default=text('gen_random_uuid()'))
+    tenant_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    slug: Mapped[str] = mapped_column(String(100), nullable=False)
+    title: Mapped[str] = mapped_column(String(150), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    item_type: Mapped[str] = mapped_column(String(20), nullable=False, default='game', server_default=text("'game'"))
+    category: Mapped[str] = mapped_column(String(80), nullable=False)
+    target_url: Mapped[Optional[str]] = mapped_column(String(500))
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text('false'))
+    featured: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text('false'))
+    min_tier: Mapped[str] = mapped_column(String(50), nullable=False, default='gratuito', server_default=text("'gratuito'"))
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid)
+    created_by_name: Mapped[Optional[str]] = mapped_column(String(120))
+    updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid)
+    updated_by_name: Mapped[Optional[str]] = mapped_column(String(120))
+    deleted_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime(True))
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(True), nullable=False, server_default=text('now()'))
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(True), nullable=False, server_default=text('now()'), onupdate=text('now()'))
+
+
 class AdminRoles(Base):
     __tablename__ = 'admin_roles'
     __table_args__ = (
@@ -615,7 +647,7 @@ class AdminRolePermissions(Base):
     __tablename__ = 'admin_role_permissions'
     __table_args__ = (
         CheckConstraint("access::text = ANY (ARRAY['read'::character varying, 'write'::character varying]::text[])", name='admin_role_permissions_access_check'),
-        CheckConstraint("module::text = ANY (ARRAY['metrics'::character varying, 'ops'::character varying, 'support'::character varying, 'content'::character varying, 'marketplace'::character varying, 'moderation'::character varying, 'settings'::character varying, 'legal'::character varying, 'staff'::character varying, 'audit'::character varying]::text[])", name='admin_role_permissions_module_check'),
+        CheckConstraint("module::text = ANY (ARRAY['metrics'::character varying, 'ops'::character varying, 'support'::character varying, 'content'::character varying, 'marketplace'::character varying, 'moderation'::character varying, 'settings'::character varying, 'legal'::character varying, 'staff'::character varying, 'audit'::character varying, 'games'::character varying]::text[])", name='admin_role_permissions_module_check'),
         ForeignKeyConstraint(['role_code'], ['admin.admin_roles.code'], name='admin_role_permissions_role_code_fkey'),
         PrimaryKeyConstraint('role_code', 'module', name='admin_role_permissions_pkey'),
         {'comment': 'Matriz de permisos por módulo (spec 2.3). read = L, write = E; '

@@ -3,6 +3,8 @@
 Backend de la **Consola de Administración** de AgeCare (Wellq Co).
 FastAPI · Python 3.12 · SQLAlchemy 2 async · PostgreSQL 16 · Alembic.
 
+Administración y archivos de juegos integrados: [alcance, migración y consumo](docs/INTEGRACION-JUEGOS.md).
+
 Implementa los 45 endpoints de la *Especificación de Endpoints — Consola de
 Administración v1*: autenticación de staff con MFA, las cuatro secciones
 analíticas del wireframe (uso comercial, estado operativo, usuarios y soporte,

@@ -155,7 +155,8 @@ COMPONENT_NAMES = {
 }
 
 # Matriz de permisos por módulo (sección 2.3): módulo -> roles con acceso de lectura/escritura
-READ = {"metrics": {AdminRole.admin, AdminRole.analyst, AdminRole.support},
+READ = {"games": set(AdminRole),
+        "metrics": {AdminRole.admin, AdminRole.analyst, AdminRole.support},
         "ops": {AdminRole.admin, AdminRole.analyst, AdminRole.support},
         "support": {AdminRole.admin, AdminRole.analyst, AdminRole.support},
         "content": {AdminRole.admin, AdminRole.editor},
@@ -165,7 +166,8 @@ READ = {"metrics": {AdminRole.admin, AdminRole.analyst, AdminRole.support},
         "legal": {AdminRole.admin},
         "staff": {AdminRole.admin},
         "audit": {AdminRole.admin}}
-WRITE = {"ops": {AdminRole.admin, AdminRole.support},
+WRITE = {"games": {AdminRole.admin, AdminRole.editor},
+         "ops": {AdminRole.admin, AdminRole.support},
          "support": {AdminRole.admin, AdminRole.support},
          "content": {AdminRole.admin, AdminRole.editor},
          "marketplace": {AdminRole.admin, AdminRole.editor},

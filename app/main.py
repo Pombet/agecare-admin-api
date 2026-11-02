@@ -11,6 +11,8 @@ from app.errors import RequestIdMiddleware, register_error_handlers
 from app.routers import (auth, content, marketplace, metrics_commercial, metrics_features,
                          metrics_roles, moderation, ops, support)
 from app.routers import system as system_router
+from app.routers import games_apps
+from app.game_static import GameStaticFiles
 
 app = FastAPI(
     title="AgeCare Admin API",
@@ -42,7 +44,11 @@ api.include_router(content.router)
 api.include_router(marketplace.router)
 api.include_router(moderation.router)
 api.include_router(system_router.router)
+api.include_router(games_apps.router)
 app.include_router(api)
+
+app.mount("/static", GameStaticFiles(directory=Path(__file__).resolve().parent / "static"),
+          name="game-static")
 
 app.mount("/demo", StaticFiles(directory=Path(__file__).resolve().parents[1] / "frontend-demo",
                               html=True), name="demo")
