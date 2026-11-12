@@ -15,7 +15,6 @@ la de juegos: ese archivo reúne solo las migraciones base).
 | Aprobar un perfil | Exige cédula y antecedentes aprobados (los perfiles sin documentos conservan la regla anterior) | `PATCH /marketplace/caregivers/{id}` |
 | Fidelización | Reseña de 4–5★ suma 15 (10 por el trabajo + 5 de bono); 3★ suma 10; 2★ suma 5; 1★ resta 5. El total es la suma del historial | `POST /marketplace/reviews`, `POST .../reviews/sync`, `POST .../caregivers/{id}/points`, `GET .../caregivers/ranking` |
 | Moderación | Cada reseña se ve por separado; se puede archivar (deja de contar, reversible) o eliminar (se borra con sus puntos) | `GET .../caregivers/{id}/reviews`, `PATCH`/`DELETE /marketplace/reviews/{id}` |
-
 | Eliminar un perfil | Borra a la cuidadora con sus documentos, reseñas y puntos (cascada; el historial conserva quién y cuándo). Si la cuidadora borra su cuenta en la app, esta avisa con la clave interna | `DELETE /marketplace/caregivers/{id}`, `POST .../caregivers/{id}/remove` |
 
 Las reglas de puntos están en `app/loyalty.py`.
