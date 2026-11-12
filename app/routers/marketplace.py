@@ -369,6 +369,29 @@ async def delete_review(review_id: UUID, request: Request, db: Db,
     await _moderate(db, request, admin, review_id, "delete")
 
 
+# ---------- Eliminar el perfil de una cuidadora ----------
+# Documentos, reseñas y puntos se van con ella (ON DELETE CASCADE); el historial conserva quién y cuándo.
+@router.delete("/caregivers/{caregiver_id}", status_code=204)
+async def delete_caregiver(caregiver_id: UUID, request: Request, db: Db,
+                           admin: models.AdminUser = require("marketplace", write=True)):
+    """El staff elimina un perfil. La app debe borrar también su cuenta: consulta
+    GET /marketplace/caregivers/statuses y ya no la verá."""
+    c = await db.get(models.CaregiverProfile, caregiver_id)
+    if c is None:
+        raise not_found()
+    await audit(db, request, "marketplace.caregiver_delete", "caregiver_profile", c.id,
+                before={"name": c.name, "email": c.email, "status": c.status})
+    await db.delete(c)
+
+
+@router.post("/caregivers/{caregiver_id}/remove", status_code=204, tags=["Sincronización con la app"])
+async def remove_caregiver(caregiver_id: UUID, db: AppSyncDb):
+    """La cuidadora eliminó su cuenta en la app: desaparece también de la Consola. Repetirlo no falla."""
+    c = await db.get(models.CaregiverProfile, caregiver_id)
+    if c is not None:
+        await db.delete(c)
+
+
 # ---------- Ficha de la cuidadora con sus documentos ----------
 @router.get("/caregivers/{caregiver_id}", response_model=CaregiverDetailOut, dependencies=[require("marketplace")])
 async def get_caregiver(caregiver_id: UUID, db: Db):

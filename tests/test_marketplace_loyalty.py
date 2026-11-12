@@ -184,3 +184,23 @@ async def test_removing_a_caregiver_removes_her_reviews_and_points(client, admin
             "(SELECT count(*) FROM admin.marketplace_caregiver_points_log WHERE caregiver_id = :c) + "
             "(SELECT count(*) FROM admin.marketplace_caregiver_documents WHERE caregiver_id = :c)"), {"c": cid})).scalar_one()
     assert left == 0
+
+
+async def test_staff_can_delete_a_caregiver_and_everything_goes_with_her(client, admin_headers, analyst_headers):
+    cid = await approved_caregiver(client, admin_headers)
+    review = await client.post(f"{BASE}/reviews/sync", headers=KEY, json={
+        "caregiver_id": cid, "family_name": "Familia App", "rating": 5, "review_id": str(uuid4())})
+    assert review.status_code == 201
+    assert (await client.delete(f"{BASE}/caregivers/{cid}", headers=analyst_headers)).status_code == 403
+    assert (await client.delete(f"{BASE}/caregivers/{cid}", headers=admin_headers)).status_code == 204
+    assert (await client.get(f"{BASE}/caregivers/{cid}", headers=admin_headers)).status_code == 404
+    assert (await client.delete(f"{BASE}/caregivers/{cid}", headers=admin_headers)).status_code == 404
+    assert await ranking_row(client, admin_headers, cid) is None
+
+
+async def test_caregiver_who_deleted_her_account_disappears_from_the_console(client, admin_headers):
+    cid = await approved_caregiver(client, admin_headers)
+    assert (await client.post(f"{BASE}/caregivers/{cid}/remove")).status_code == 403
+    assert (await client.post(f"{BASE}/caregivers/{cid}/remove", headers=KEY)).status_code == 204
+    assert (await client.get(f"{BASE}/caregivers/{cid}", headers=admin_headers)).status_code == 404
+    assert (await client.post(f"{BASE}/caregivers/{cid}/remove", headers=KEY)).status_code == 204  # repetirlo no falla
