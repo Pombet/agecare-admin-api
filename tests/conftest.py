@@ -2,7 +2,11 @@
 import asyncio
 import os
 
-os.environ["ADMIN_DATABASE_URL"] = "sqlite+aiosqlite://"
+# Las tablas canónicas usan tipos propios de PostgreSQL (esquema admin, ARRAY, CITEXT): para probarlas de verdad
+# se apunta TEST_DATABASE_URL a una base migrada (alembic upgrade head) y sembrada (python -m scripts.seed).
+# Sin esa variable las pruebas corren en SQLite, como antes.
+TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL")
+os.environ["ADMIN_DATABASE_URL"] = TEST_DATABASE_URL or "sqlite+aiosqlite://"
 os.environ["ADMIN_JWT_SECRET"] = "secreto-de-test"
 
 import pytest
@@ -27,6 +31,14 @@ def event_loop():
 
 @pytest_asyncio.fixture(scope="session")
 async def engine():
+    if TEST_DATABASE_URL:
+        from sqlalchemy.pool import NullPool
+        eng = create_async_engine(TEST_DATABASE_URL, poolclass=NullPool)
+        database._engine = eng
+        database._session_factory = async_sessionmaker(eng, expire_on_commit=False)
+        yield eng
+        await eng.dispose()
+        return
     eng = create_async_engine("sqlite+aiosqlite://", poolclass=StaticPool,
                               connect_args={"check_same_thread": False})
     database._engine = eng
@@ -39,6 +51,8 @@ async def engine():
 
 @pytest_asyncio.fixture(scope="session")
 async def seeded(engine):
+    if TEST_DATABASE_URL:  # la base de prueba ya viene sembrada
+        return True
     from scripts.seed import seed
     await seed()
     return True

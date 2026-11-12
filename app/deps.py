@@ -2,6 +2,8 @@
 from typing import Annotated
 from uuid import UUID
 
+import hmac
+
 import jwt
 from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -12,7 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import models
 from app.database import get_db
 from app.enums import READ, WRITE, AdminRole
-from app.errors import forbidden, unauthorized
+from app.config import get_settings
+from app.errors import ApiError, forbidden, unauthorized
 from app.security import decode_access_token
 
 
@@ -57,6 +60,27 @@ async def get_current_admin(request: Request,
 
 CurrentAdmin = Annotated[models.AdminUser, Depends(get_current_admin)]
 Db = Annotated[AsyncSession, Depends(get_db)]
+
+
+async def get_app_sync_db(request: Request, db: Annotated[AsyncSession, Depends(get_db)]) -> AsyncSession:
+    """Quien llama es la app (otro servicio, sin sesión de staff): se autentica con X-Internal-Key y sus
+    escrituras quedan dentro del tenant configurado en ADMIN_INTERNAL_SYNC_TENANT, igual que las del staff."""
+    s = get_settings()
+    if not s.internal_sync_key:
+        raise ApiError(503, "SYNC_DISABLED", "La sincronización con la app no está configurada.")
+    sent = request.headers.get("X-Internal-Key", "")
+    if not hmac.compare_digest(sent.encode(), s.internal_sync_key.encode()):
+        raise forbidden("Clave interna inválida.")
+    tenant = (await db.execute(select(models.Tenants).where(models.Tenants.code == s.internal_sync_tenant,
+                                                          models.Tenants.is_active.is_(True)))).scalar_one_or_none()
+    if tenant is None:
+        raise ApiError(503, "SYNC_TENANT_NOT_FOUND", "El tenant de sincronización no existe o está inactivo.")
+    await db.execute(text("SELECT set_config('app.tenant_id', :tid, true)"), {"tid": str(tenant.id)})
+    db.info["tenant_id"] = tenant.id
+    return db
+
+
+AppSyncDb = Annotated[AsyncSession, Depends(get_app_sync_db)]
 
 
 def require(module: str, write: bool = False):

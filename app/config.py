@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     lockout_minutes: int = 15
     allowed_email_domains: str = "wellq.co.uk,wellq.co"  # separados por coma
 
+    # Sincronización servidor a servidor con la app (sitio de familias y cuidadoras). Vacía = desactivada.
+    # La app se identifica con la cabecera X-Internal-Key; sus datos se guardan en el tenant indicado.
+    internal_sync_key: str = ""
+    internal_sync_tenant: str = "local"
+
     # Negocio
     business_timezone: str = "America/Santiago"
 
