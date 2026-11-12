@@ -2402,6 +2402,58 @@ class MarketplaceCaregiverDocuments(Base):
     reviewer: Mapped[Optional['AdminUsers']] = relationship('AdminUsers', foreign_keys=[reviewed_by])
 
 
+class MarketplaceCaregiverReviews(Base):
+    """Reseña de una familia sobre una cuidadora (migración 0010)."""
+    __tablename__ = 'marketplace_caregiver_reviews'
+    __table_args__ = (
+        ForeignKeyConstraint(['caregiver_id'], ['admin.marketplace_caregivers.caregiver_id'],
+                             name='marketplace_caregiver_reviews_caregiver_fkey', ondelete='CASCADE'),
+        ForeignKeyConstraint(['archived_by'], ['admin.admin_users.id']),
+        ForeignKeyConstraint(['tenant_id'], ['admin.tenants.id']),
+        {'schema': 'admin'},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, server_default=text('gen_random_uuid()'))
+    tenant_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    caregiver_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    family_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    rating: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(True), nullable=False, server_default=text('now()'))
+    comment: Mapped[Optional[str]] = mapped_column(Text)
+    job_reference: Mapped[Optional[str]] = mapped_column(String(120))
+    external_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid)
+    archived_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime(True))
+    archived_by: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid)
+
+    archiver: Mapped[Optional['AdminUsers']] = relationship('AdminUsers', foreign_keys=[archived_by])
+
+
+class MarketplaceCaregiverPointsLog(Base):
+    """Historial de puntos de fidelización (migración 0010)."""
+    __tablename__ = 'marketplace_caregiver_points_log'
+    __table_args__ = (
+        ForeignKeyConstraint(['caregiver_id'], ['admin.marketplace_caregivers.caregiver_id'],
+                             name='marketplace_caregiver_points_caregiver_fkey', ondelete='CASCADE'),
+        ForeignKeyConstraint(['review_id'], ['admin.marketplace_caregiver_reviews.id'],
+                             name='marketplace_caregiver_points_review_fkey', ondelete='CASCADE'),
+        ForeignKeyConstraint(['awarded_by'], ['admin.admin_users.id']),
+        ForeignKeyConstraint(['tenant_id'], ['admin.tenants.id']),
+        {'schema': 'admin'},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, server_default=text('gen_random_uuid()'))
+    tenant_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    caregiver_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    points: Mapped[int] = mapped_column(Integer, nullable=False)
+    reason: Mapped[str] = mapped_column(String(20), nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(True), nullable=False, server_default=text('now()'))
+    note: Mapped[Optional[str]] = mapped_column(String(300))
+    review_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid)
+    awarded_by: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid)
+
+    awarder: Mapped[Optional['AdminUsers']] = relationship('AdminUsers', foreign_keys=[awarded_by])
+
+
 class MarketplaceProducts(Base):
     __tablename__ = 'marketplace_products'
     __table_args__ = (
@@ -2772,6 +2824,8 @@ TicketReply = SupportTicketReplies
 ContentItem = ContentItems
 CaregiverProfile = MarketplaceCaregivers
 CaregiverDocument = MarketplaceCaregiverDocuments
+CaregiverReview = MarketplaceCaregiverReviews
+CaregiverPointsLog = MarketplaceCaregiverPointsLog
 Product = MarketplaceProducts
 ModerationItem = ModerationItems
 SystemSetting = SystemSettings

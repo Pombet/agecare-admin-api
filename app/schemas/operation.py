@@ -108,6 +108,74 @@ class CaregiverDocumentReviewIn(BaseModel):
         return v.strip() or None if v else None
 
 
+class CaregiverReviewIn(BaseModel):
+    """Reseña registrada a mano por el staff."""
+    caregiver_id: UUID
+    family_name: str = Field(min_length=2, max_length=120)
+    rating: int = Field(ge=1, le=5)
+    comment: str | None = Field(default=None, max_length=1000)
+    job_reference: str | None = Field(default=None, max_length=120)
+
+
+class CaregiverReviewSyncIn(BaseModel):
+    """Reseña reenviada por la app cuando una familia reseña a una cuidadora."""
+    caregiver_id: UUID
+    family_name: str = Field(min_length=2, max_length=120)
+    rating: int = Field(ge=1, le=5)
+    comment: str | None = Field(default=None, max_length=1000)
+    review_id: UUID | None = None  # id de la reseña en la app
+
+
+class CaregiverReviewOut(BaseModel):
+    id: UUID
+    caregiver_id: UUID
+    family_name: str
+    rating: int
+    comment: str | None
+    job_reference: str | None
+    points_awarded: int
+    created_at: datetime
+    archived_at: datetime | None = None
+    archived_by_name: str | None = None
+
+
+class ReviewArchiveIn(BaseModel):
+    archived: bool
+
+
+class CaregiverPointsIn(BaseModel):
+    points: int = Field(ge=-1000, le=1000)
+    reason: str = Field(default="manual", pattern="^(job_completed|good_review|bad_review|manual)$")
+    note: str | None = Field(default=None, max_length=300)
+
+    @field_validator("points")
+    @classmethod
+    def _not_zero(cls, v: int) -> int:
+        if v == 0:
+            raise ValueError("Los puntos no pueden ser 0.")
+        return v
+
+
+class CaregiverPointsOut(BaseModel):
+    caregiver_id: UUID
+    points_awarded: int
+    reason: str
+    total_points: int
+    created_at: datetime
+
+
+class CaregiverRankingItem(BaseModel):
+    rank: int
+    caregiver_id: UUID
+    name: str
+    photo_url: str | None
+    zone: str
+    points: int
+    rating_avg: float | None
+    reviews_count: int
+    status: CaregiverStatus
+
+
 class CaregiverPatchIn(BaseModel):
     status: CaregiverStatus | None = None
     reason: str | None = Field(default=None, min_length=10, max_length=1000)

@@ -2,10 +2,10 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Query, Request
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.orm import selectinload
 
-from app import models
+from app import loyalty, models
 from app.audit import audit
 from app.deps import AppSyncDb, Db, require
 from app.enums import CaregiverStatus, ContentStatus
@@ -13,7 +13,9 @@ from app.errors import conflict, invalid, not_found
 from app.schemas.common import Page
 from app.schemas.operation import (CaregiverDetailOut, CaregiverDocumentOut, CaregiverDocumentReviewIn,
                                    CaregiverDocumentSyncIn, CaregiverOut, CaregiverPatchIn,
-                                   CaregiverSyncIn, ProductCreateIn, ProductOut, ProductPatchIn)
+                                   CaregiverPointsIn, CaregiverPointsOut, CaregiverRankingItem, CaregiverReviewIn,
+                                   CaregiverReviewOut, CaregiverReviewSyncIn, CaregiverSyncIn, ProductCreateIn,
+                                   ProductOut, ProductPatchIn, ReviewArchiveIn)
 from app.security import now_utc
 
 router = APIRouter(prefix="/marketplace", tags=["Catálogos marketplace"])
@@ -186,6 +188,185 @@ async def caregiver_documents_for_app(db: AppSyncDb, caregiver_id: UUID):
     docs = await _documents_for(db, caregiver_id)
     return {"items": [{"doc_type": d.doc_type, "file_url": d.file_url, "status": d.status,
                        "pending_file_url": d.pending_file_url, "review_note": d.review_note} for d in docs]}
+
+
+# ---------- Fidelización: reseñas, puntos y ranking ----------
+async def _register_review(db: Db, c: models.CaregiverProfile, family_name: str, rating: int, comment: str | None,
+                           job_reference: str | None, admin: models.AdminUser | None,
+                           external_id: UUID | None = None) -> tuple[models.CaregiverReview, int]:
+    """Crea la reseña, otorga (o descuenta) los puntos que correspondan y recalcula la nota de la cuidadora.
+    Lo comparten el registro manual del staff y la reseña que llega desde la app (sin staff, `admin` = None)."""
+    review = models.CaregiverReview(caregiver_id=c.id, family_name=family_name, rating=rating, comment=comment,
+                                    job_reference=job_reference, external_id=external_id)
+    db.add(review)
+    await db.flush()
+    awarded_by = admin.id if admin else None
+    awarded = loyalty.POINTS_JOB_COMPLETED
+    db.add(models.CaregiverPointsLog(caregiver_id=c.id, points=awarded, reason="job_completed", review_id=review.id,
+                                     note=f"Trabajo cerrado con reseña de {family_name}.", awarded_by=awarded_by))
+    extra = loyalty.review_bonus(rating)
+    if extra is not None:
+        pts, reason, note = extra
+        awarded += pts
+        db.add(models.CaregiverPointsLog(caregiver_id=c.id, points=pts, reason=reason, review_id=review.id,
+                                         note=note, awarded_by=awarded_by))
+    await db.flush()
+    await loyalty.recalc_rating(db, c)
+    return review, awarded
+
+
+def _review_out(r: models.CaregiverReview, points: int) -> CaregiverReviewOut:
+    return CaregiverReviewOut(id=r.id, caregiver_id=r.caregiver_id, family_name=r.family_name, rating=r.rating,
+                              comment=r.comment, job_reference=r.job_reference, points_awarded=points,
+                              created_at=r.created_at, archived_at=r.archived_at,
+                              archived_by_name=r.archiver.full_name if r.archiver is not None else None)
+
+
+@router.get("/caregivers/ranking", response_model=Page[CaregiverRankingItem], dependencies=[require("marketplace")])
+async def caregiver_ranking(db: Db, zone: str | None = None, page: int = Query(default=1, ge=1),
+                            page_size: int = Query(default=25, ge=1, le=100)):
+    """Cuidadoras aprobadas ordenadas por puntos de fidelización (a igual puntaje, por nota)."""
+    points = loyalty.points_by_caregiver()
+    stmt = (select(models.CaregiverProfile, func.coalesce(points.c.points, 0))
+            .outerjoin(points, points.c.caregiver_id == models.CaregiverProfile.caregiver_id)
+            .where(models.CaregiverProfile.status == CaregiverStatus.approved))
+    if zone:
+        stmt = stmt.where(models.CaregiverProfile.zone.ilike(f"%{zone}%"))
+    total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
+    stmt = stmt.order_by(func.coalesce(points.c.points, 0).desc(), models.CaregiverProfile.rating_avg.desc().nulls_last())
+    rows = (await db.execute(stmt.offset((page - 1) * page_size).limit(page_size))).all()
+    items = [CaregiverRankingItem(rank=(page - 1) * page_size + i + 1, caregiver_id=c.id, name=c.name,
+                                  photo_url=c.photo_url, zone=c.zone, points=int(pts),
+                                  rating_avg=float(c.rating_avg) if c.rating_avg is not None else None,
+                                  reviews_count=c.reviews_count, status=CaregiverStatus(c.status))
+             for i, (c, pts) in enumerate(rows)]
+    return Page(items=items, page=page, page_size=page_size, total=total)
+
+
+@router.post("/caregivers/{caregiver_id}/points", response_model=CaregiverPointsOut, status_code=201)
+async def award_points(caregiver_id: UUID, body: CaregiverPointsIn, request: Request, db: Db,
+                       admin: models.AdminUser = require("marketplace", write=True)):
+    """Bono (o descuento) manual de puntos, con una nota que queda en el historial."""
+    c = await db.get(models.CaregiverProfile, caregiver_id)
+    if c is None:
+        raise not_found()
+    if c.status != CaregiverStatus.approved:
+        raise conflict("CAREGIVER_NOT_APPROVED", "Solo se pueden otorgar puntos a cuidadoras con perfil aprobado.")
+    log = models.CaregiverPointsLog(caregiver_id=c.id, points=body.points, reason=body.reason, note=body.note,
+                                    awarded_by=admin.id)
+    db.add(log)
+    await db.flush()
+    total = await loyalty.total_points(db, c.id)
+    await audit(db, request, "marketplace.points_awarded", "caregiver_profile", c.id,
+                after={"points": body.points, "reason": body.reason, "total_points": total})
+    return CaregiverPointsOut(caregiver_id=c.id, points_awarded=body.points, reason=body.reason, total_points=total,
+                              created_at=log.created_at or now_utc())
+
+
+@router.post("/reviews", response_model=CaregiverReviewOut, status_code=201)
+async def create_review(body: CaregiverReviewIn, request: Request, db: Db,
+                        admin: models.AdminUser = require("marketplace", write=True)):
+    """El staff registra una reseña (cierra el ciclo de fidelización y mueve puntos y ranking)."""
+    c = await db.get(models.CaregiverProfile, body.caregiver_id)
+    if c is None:
+        raise not_found()
+    if c.status != CaregiverStatus.approved:
+        raise conflict("CAREGIVER_NOT_APPROVED", "Solo se puede reseñar a cuidadoras con perfil aprobado.")
+    review, awarded = await _register_review(db, c, body.family_name, body.rating, body.comment,
+                                             body.job_reference, admin)
+    await audit(db, request, "marketplace.review_created", "caregiver_profile", c.id,
+                after={"rating": body.rating, "points_awarded": awarded})
+    await db.refresh(review, attribute_names=["archiver"])
+    return _review_out(review, awarded)
+
+
+@router.post("/reviews/sync", response_model=CaregiverReviewOut, status_code=201, tags=["Sincronización con la app"])
+async def sync_review(body: CaregiverReviewSyncIn, request: Request, db: AppSyncDb):
+    """La familia reseña a la cuidadora en la app. Es idempotente: reenviar la misma reseña (mismo review_id)
+    devuelve la ya registrada sin volver a sumar puntos."""
+    c = await db.get(models.CaregiverProfile, body.caregiver_id)
+    if c is None:
+        raise not_found("La cuidadora aún no está sincronizada.")
+    if body.review_id is not None:
+        dup = (await db.execute(select(models.CaregiverReview).options(selectinload(models.CaregiverReview.archiver))
+                                .where(models.CaregiverReview.external_id == body.review_id))).scalar_one_or_none()
+        if dup is not None:
+            pts = (await db.execute(select(func.coalesce(func.sum(models.CaregiverPointsLog.points), 0))
+                                    .where(models.CaregiverPointsLog.review_id == dup.id))).scalar_one()
+            return _review_out(dup, int(pts))
+    review, awarded = await _register_review(db, c, body.family_name, body.rating, body.comment,
+                                             "Reseña de la app", None, external_id=body.review_id)
+    await audit(db, request, "marketplace.review_synced", "caregiver_profile", c.id,
+                after={"rating": body.rating, "points_awarded": awarded}, actor=None)
+    await db.refresh(review, attribute_names=["archiver"])
+    return _review_out(review, awarded)
+
+
+@router.get("/reviews/moderation", tags=["Sincronización con la app"])
+async def reviews_moderation_for_app(db: AppSyncDb):
+    """La app consulta qué reseñas suyas el staff archivó o eliminó, para ocultarlas y recalcular la nota."""
+    archived = (await db.execute(select(models.CaregiverReview.external_id).where(
+        models.CaregiverReview.external_id.is_not(None), models.CaregiverReview.archived_at.is_not(None)))).scalars().all()
+    deleted = (await db.execute(text(
+        "SELECT DISTINCT external_id FROM admin.marketplace_caregiver_reviews_history "
+        "WHERE op = 'D' AND external_id IS NOT NULL"))).scalars().all()
+    return {"archived": [str(i) for i in archived], "deleted": [str(i) for i in deleted]}
+
+
+@router.get("/caregivers/{caregiver_id}/reviews", response_model=Page[CaregiverReviewOut],
+            dependencies=[require("marketplace")])
+async def list_reviews(caregiver_id: UUID, db: Db, page: int = Query(default=1, ge=1),
+                       page_size: int = Query(default=25, ge=1, le=100)):
+    """Calificaciones de una cuidadora, una por una (incluye las archivadas, marcadas como tales)."""
+    if await db.get(models.CaregiverProfile, caregiver_id) is None:
+        raise not_found()
+    stmt = (select(models.CaregiverReview).options(selectinload(models.CaregiverReview.archiver))
+            .where(models.CaregiverReview.caregiver_id == caregiver_id)
+            .order_by(models.CaregiverReview.created_at.desc()))
+    total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
+    rows = (await db.execute(stmt.offset((page - 1) * page_size).limit(page_size))).scalars().all()
+    pts = dict((await db.execute(
+        select(models.CaregiverPointsLog.review_id, func.sum(models.CaregiverPointsLog.points))
+        .where(models.CaregiverPointsLog.review_id.in_([r.id for r in rows]))
+        .group_by(models.CaregiverPointsLog.review_id))).all()) if rows else {}
+    return Page(items=[_review_out(r, int(pts.get(r.id, 0))) for r in rows], page=page, page_size=page_size, total=total)
+
+
+async def _moderate(db: Db, request: Request, admin: models.AdminUser, review_id: UUID, action: str):
+    r = await db.get(models.CaregiverReview, review_id, options=[selectinload(models.CaregiverReview.archiver)])
+    if r is None:
+        raise not_found()
+    c = await db.get(models.CaregiverProfile, r.caregiver_id)
+    before = {"rating": r.rating, "archived": r.archived_at is not None, "family": r.family_name}
+    if action == "archive":
+        r.archived_at, r.archived_by = now_utc(), admin.id
+    elif action == "restore":
+        r.archived_at, r.archived_by = None, None
+    else:  # delete: los puntos de la reseña se van con ella (ON DELETE CASCADE)
+        await db.delete(r)
+    await db.flush()
+    await loyalty.recalc_rating(db, c)
+    await audit(db, request, f"marketplace.review_{action}", "caregiver_profile", c.id, before=before,
+                after={"total_points": await loyalty.total_points(db, c.id)})
+    return r
+
+
+@router.patch("/reviews/{review_id}", response_model=CaregiverReviewOut)
+async def archive_review(review_id: UUID, body: ReviewArchiveIn, request: Request, db: Db,
+                         admin: models.AdminUser = require("marketplace", write=True)):
+    """Archiva (la oculta; deja de contar para la nota y los puntos) o restaura una reseña."""
+    r = await _moderate(db, request, admin, review_id, "archive" if body.archived else "restore")
+    await db.refresh(r, attribute_names=["archiver"])
+    pts = (await db.execute(select(func.coalesce(func.sum(models.CaregiverPointsLog.points), 0))
+                            .where(models.CaregiverPointsLog.review_id == r.id))).scalar_one()
+    return _review_out(r, int(pts))
+
+
+@router.delete("/reviews/{review_id}", status_code=204)
+async def delete_review(review_id: UUID, request: Request, db: Db,
+                        admin: models.AdminUser = require("marketplace", write=True)):
+    """Elimina la reseña definitivamente, junto con los puntos que dio o quitó."""
+    await _moderate(db, request, admin, review_id, "delete")
 
 
 # ---------- Ficha de la cuidadora con sus documentos ----------
