@@ -165,7 +165,10 @@ READ = {"games": set(AdminRole),
         "settings": {AdminRole.admin},
         "legal": {AdminRole.admin},
         "staff": {AdminRole.admin},
-        "audit": {AdminRole.admin}}
+        "audit": {AdminRole.admin},
+        # Pasarela de pago: el staff consulta; solo admin opera (cancelar, reintentar, reembolsar)
+        "billing": {AdminRole.admin, AdminRole.analyst, AdminRole.support},
+        "billing_refunds": {AdminRole.admin}}
 WRITE = {"games": {AdminRole.admin, AdminRole.editor},
          "ops": {AdminRole.admin, AdminRole.support},
          "support": {AdminRole.admin, AdminRole.support},
@@ -174,4 +177,6 @@ WRITE = {"games": {AdminRole.admin, AdminRole.editor},
          "moderation": {AdminRole.admin, AdminRole.moderator},
          "settings": {AdminRole.admin},
          "legal": {AdminRole.admin},
-         "staff": {AdminRole.admin}}
+         "staff": {AdminRole.admin},
+         "billing": {AdminRole.admin},
+         "billing_refunds": {AdminRole.admin}}

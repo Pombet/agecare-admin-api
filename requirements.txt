@@ -10,3 +10,6 @@ argon2-cffi>=23.1
 PyJWT>=2.8
 pyotp>=2.9
 jsonschema>=4.22
+# Pasarela de pago (Transbank Oneclick Mall): cliente HTTP y cifrado de tbk_user
+httpx>=0.27
+cryptography>=42
